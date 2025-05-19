@@ -4,60 +4,66 @@ import msal
 from urllib.parse import quote
 import sys
 import io
-
+ 
+# === Fix Unicode Output ===
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-
+ 
 # === Get filename from CLI ===
 if len(sys.argv) < 2:
     print("❌ Error: No filename provided.")
     sys.exit(1)
-
+ 
 filename = sys.argv[1]
-
+ 
 # === Azure App Credentials ===
 client_id = "46a6a5f3-e21b-48d8-9471-da2f1683d9d2"
 tenant_id = "15718213-950b-4c0d-bde9-a2bed7befbe7"
 authority = f"https://login.microsoftonline.com/{tenant_id}"
 scopes = ["User.Read", "Files.ReadWrite.All"]
-
-# === SharePoint Paths ===
-local_path = os.path.join(os.path.expanduser("~"), "Downloads", filename)
+ 
+# === SharePoint File Info ===
 file_path_on_sharepoint = quote(filename)
-
+ 
+# === Save path: same directory as script ===
+script_dir = os.path.dirname(os.path.abspath(__file__))
+local_path = os.path.join(script_dir, filename)
+ 
+# === SharePoint Site Info ===
 site_domain = "iastsoftware20.sharepoint.com"
 site_path = "sites/Testingversions"
-
+ 
+# === Step 1: Authenticate ===
 app = msal.PublicClientApplication(client_id=client_id, authority=authority)
 result = app.acquire_token_interactive(scopes=scopes)
-
+ 
 if "access_token" not in result:
     print("❌ Authentication failed.")
     sys.exit(1)
-
+ 
 headers = {"Authorization": f"Bearer {result['access_token']}"}
-
-# === Get Site ID ===
+ 
+# === Step 2: Get Site ID ===
 site_info_url = f"https://graph.microsoft.com/v1.0/sites/{site_domain}:/{site_path}"
 site_info_response = requests.get(site_info_url, headers=headers)
 if site_info_response.status_code != 200:
     print("❌ Failed to retrieve SharePoint site info.")
     sys.exit(1)
-
+ 
 site_id = site_info_response.json()["id"]
-
-# === Get Drive ID ===
+ 
+# === Step 3: Get Drive ID ===
 drive_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive"
 drive_response = requests.get(drive_url, headers=headers)
 if drive_response.status_code != 200:
     print("❌ Failed to get drive info.")
     sys.exit(1)
-
+ 
 drive_id = drive_response.json()["id"]
-
-# === Download file ===
+ 
+# === Step 4: Download File ===
 download_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{file_path_on_sharepoint}:/content"
 download_response = requests.get(download_url, headers=headers)
-
+ 
 if download_response.status_code == 200:
     with open(local_path, "wb") as file:
         file.write(download_response.content)
